@@ -1,0 +1,81 @@
+## Visual Studio 工程通用忽略规则 ##
+
+# 用户特定文件
+*.user
+*.userosscache
+*.sln.docstates
+
+# 生成文件
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# 编译结果
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.cache
+*.ipdb
+*.iobj
+
+# 调试文件
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# 发布输出
+[Dd]ebug*/
+[Rr]elease*/
+x64/
+x86/
+[Bb]uild/
+bld/
+
+# VS 项目文件自动生成
+*.aps
+*.tlog
+*.log
+*.unsuccessfulbuild
+*.manifest
+*.cache
+*.pch
+*.ipch
+
+# VS 2015+ 隐藏目录
+.vs/
+.vscode/
+
+# NuGet 包
+packages/
+*.nupkg
+.nuget/
+NuGet.exe
+
+# Resharper 缓存
+_ReSharper*/
+*.resharper
+*.DotSettings.user
+
+# MSTest 测试结果
+TestResult/
+*.trx
+*.testlog.?
+
+# 其他
+*.sln.ide
+*.db
+*.sql
+*.ldf
+*.mdf
+*.suo
+*.ide/
+*.dotCover
