@@ -24,7 +24,7 @@ void GameTimer::Tick()
 	mDeltaTime = (mCurrTime - mPrevTime) * mSecondsPerCount;
 	// Prepare for next frame.
 	mPrevTime = mCurrTime;
-	// Force nonnegative. The DXSDK’s CDXUTTimer mentions that if the
+	// Force nonnegative. The DXSDK's CDXUTTimer mentions that if the
 	// processor goes into a power save mode or we get shuffled to
 	// another processor, then mDeltaTime can be negative.
 	if (mDeltaTime < 0.0)
@@ -51,7 +51,7 @@ void GameTimer::Reset()
 
 void GameTimer::Stop()
 {
-	// If we are already stopped, then don’t do anything.
+	// If we are already stopped, then dont do anything.
 	if (!mStopped)
 	{
 		__int64 currTime;

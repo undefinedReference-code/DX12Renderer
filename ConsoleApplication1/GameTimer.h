@@ -14,7 +14,10 @@ public:
 	float TotalTime() const;
 private:
 	double mSecondsPerCount;
+	// Time difference between this frame and the previous. in seconds
 	double mDeltaTime;
+	// In ticks, the last time point, you call Reset
+	// It is regards as the start point of the renderer
 	__int64 mBaseTime;
 	__int64 mPausedTime;
 	__int64 mStopTime;
