@@ -51,23 +51,12 @@ protected:
 	void CreateSwapChain();
 	void FlushCommandQueue();
 
-	ID3D12Resource* CurrentBackBuffer()const
-	{
-		return mSwapChainBuffer[mCurrBackBuffer].Get();
-	}
+	ID3D12Resource* CurrentBackBuffer() const;
 	
-	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()const
-	{
-		return CD3DX12_CPU_DESCRIPTOR_HANDLE(
-			mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
-			mCurrBackBuffer,
-			mRtvDescriptorSize);
-	}
+	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()const;
 	
-	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView()const
-	{
-		return mDsvHeap->GetCPUDescriptorHandleForHeapStart();
-	}
+	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView()const;
+
 	void CalculateFrameStats();
 	void LogAdapters();
 	void LogAdapterOutputs(IDXGIAdapter* adapter);
