@@ -29,6 +29,12 @@ float D3DApp::AspectRatio() const
 	return static_cast<float>(mClientWidth) / mClientHeight;
 }
 
+D3DApp* D3DApp::mApp = nullptr;
+D3DApp* D3DApp::GetApp()
+{
+	return mApp;
+}
+
 HINSTANCE D3DApp::AppInst()const
 {
 	return mhAppInst;
@@ -468,8 +474,9 @@ void D3DApp::OnResize()
 	optClear.Format = mDepthStencilFormat;
 	optClear.DepthStencil.Depth = 1.0f;
 	optClear.DepthStencil.Stencil = 0;
+	CD3DX12_HEAP_PROPERTIES DSHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&DSHeapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&depthStencilDesc,
 		D3D12_RESOURCE_STATE_COMMON,
@@ -485,8 +492,11 @@ void D3DApp::OnResize()
 	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
 
 	// Transition the resource from its initial state to be used as a depth buffer.
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		mDepthStencilBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON, 
+		D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	mCommandList->ResourceBarrier(1, &barrier);
 
 	// Execute the resize commands.
 	// Close before ExecuteCommandLists
