@@ -54,3 +54,12 @@ public:
 #ifndef ReleaseCom
 #define ReleaseCom(x) { if(x){ x->Release(); x = 0; } }
 #endif
+
+class d3dUtil {
+    static Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
+        ID3D12Device* device,
+        ID3D12GraphicsCommandList* cmdList,
+        const void* initData,
+        UINT64 byteSize,
+        Microsoft::WRL::ComPtr<ID3D12Resource>& uploadBuffer);
+};
