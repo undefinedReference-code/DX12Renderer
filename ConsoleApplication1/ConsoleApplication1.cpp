@@ -7,7 +7,7 @@
 #include <dxgi1_4.h>        // 用于 DXGI 接口（CreateDXGIFactory1, EnumWarpAdapter）
 #include <d3d12.h>          // DirectX 12 核心功能
 #include "GameTimer.h"
-
+#include "d3dApp.h"
 // 定义 ThrowIfFailed 宏
 #define ThrowIfFailed(hr) if (FAILED(hr)) { throw _com_error(hr); }
 
@@ -280,21 +280,6 @@ public :
 
 };
 
-LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    //消息处理
-    switch (msg)
-    {
-        //当窗口被销毁时，终止消息循环
-    case WM_DESTROY:
-        PostQuitMessage(0);	//终止消息循环，并发出WM_QUIT消息
-        return 0;
-    default:
-        break;
-    }
-    //将上面没有处理的消息转发给默认的窗口过程
-    return DefWindowProc(hwnd, msg, wParam, lParam);
-}
 
 HWND CreateMainWindow(HINSTANCE hInstance, int nShowCmd) {
     //窗口初始化描述结构体(WNDCLASS)
