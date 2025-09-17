@@ -62,4 +62,6 @@ class d3dUtil {
         const void* initData,
         UINT64 byteSize,
         Microsoft::WRL::ComPtr<ID3D12Resource>& uploadBuffer);
+
+    UINT CalcConstantBufferByteSize(UINT byteSize);
 };
