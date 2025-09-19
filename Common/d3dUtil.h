@@ -56,6 +56,7 @@ public:
 #endif
 
 class d3dUtil {
+public:
     static Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
         ID3D12Device* device,
         ID3D12GraphicsCommandList* cmdList,
@@ -63,5 +64,5 @@ class d3dUtil {
         UINT64 byteSize,
         Microsoft::WRL::ComPtr<ID3D12Resource>& uploadBuffer);
 
-    UINT CalcConstantBufferByteSize(UINT byteSize);
+    static UINT CalcConstantBufferByteSize(UINT byteSize);
 };

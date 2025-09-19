@@ -2,7 +2,7 @@
 #include "./Common/MathHelper.h"
 #include <DirectXColors.h>
 #include <DirectX-Headers/include/directx/d3dx12_barriers.h>
-
+#include "./Common/UploadBuffer.h"
 // CBuffer
 struct ObjectConstants
 {
@@ -31,6 +31,8 @@ private:
 	XMFLOAT4X4 mWorld;
 	XMFLOAT4X4 mView;
 	XMFLOAT4X4 mProj;
+
+	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
 };
 
 
@@ -95,6 +97,10 @@ bool BoxRenderer::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return false;
+
+	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
+
+
 	return true;
 }
 void BoxRenderer::OnResize()
