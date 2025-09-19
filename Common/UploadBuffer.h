@@ -32,18 +32,23 @@ public:
 		// However, we must not write to the resource while it is in use by
 		// the GPU (so we must use synchronization techniques).
 	}
+
 	UploadBuffer(const UploadBuffer& rhs) = delete;
+
 	UploadBuffer& operator=(const UploadBuffer& rhs) = delete;
+
 	~UploadBuffer()
 	{
 		if (mUploadBuffer != nullptr)
 			mUploadBuffer->Unmap(0, nullptr);
 		mMappedData = nullptr;
 	}
+
 	ID3D12Resource* Resource()const
 	{
 		return mUploadBuffer.Get();
 	}
+
 	void CopyData(int elementIndex, const T& data)
 	{
 		memcpy(&mMappedData[elementIndex * mElementByteSize], &data, sizeof(T));

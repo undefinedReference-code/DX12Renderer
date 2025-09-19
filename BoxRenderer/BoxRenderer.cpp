@@ -1,17 +1,36 @@
 #include "./Common/d3dApp.h"
+#include "./Common/MathHelper.h"
 #include <DirectXColors.h>
 #include <DirectX-Headers/include/directx/d3dx12_barriers.h>
+
+// CBuffer
+struct ObjectConstants
+{
+	DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
+};
+
 using namespace DirectX;
 class BoxRenderer : public D3DApp
 {
 public:
 	BoxRenderer(HINSTANCE hInstance);
 	~BoxRenderer();
-	virtual bool Initialize()override;
+	virtual bool Initialize() override;
 private:
-	virtual void OnResize()override;
-	virtual void Update(const GameTimer& gt)override;
-	virtual void Draw(const GameTimer& gt)override;
+	virtual void OnResize() override;
+	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
+	virtual void Update(const GameTimer& gt) override;
+	virtual void Draw(const GameTimer& gt) override;
+
+private:
+	XMFLOAT2 mLastMousePos;
+	float mTheta;
+	float mPhi;
+	float mRadius;
+
+	XMFLOAT4X4 mWorld;
+	XMFLOAT4X4 mView;
+	XMFLOAT4X4 mProj;
 };
 
 
@@ -36,6 +55,34 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 	}
 }
 
+void BoxRenderer::OnMouseMove(WPARAM btnState, int x, int y)
+{
+	if ((btnState & MK_LBUTTON) != 0)
+	{
+		// Make each pixel correspond to a quarter of a degree.
+		float dx = XMConvertToRadians(0.25f * static_cast<float>
+			(x - mLastMousePos.x));
+		float dy = XMConvertToRadians(0.25f * static_cast<float>
+			(y - mLastMousePos.y));
+		// Update angles based on input to orbit camera around box.
+		mTheta += dx;
+		mPhi += dy;
+		// Restrict the angle mPhi.
+		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
+	}
+	else if ((btnState & MK_RBUTTON) != 0)
+	{
+		// Make each pixel correspond to 0.005 unit in the scene.
+		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
+		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
+		// Update the camera radius based on input.
+		mRadius += dx - dy;
+		// Restrict the radius.
+		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+	}
+	mLastMousePos.x = x;
+	mLastMousePos.y = y;
+}
 
 BoxRenderer::BoxRenderer(HINSTANCE hInstance)
 	: D3DApp(hInstance)
@@ -56,6 +103,29 @@ void BoxRenderer::OnResize()
 }
 void BoxRenderer::Update(const GameTimer& gt)
 {
+	// Convert Spherical to Cartesian coordinates.
+	float x = mRadius * sinf(mPhi) * cosf(mTheta);
+	float z = mRadius * sinf(mPhi) * sinf(mTheta);
+	float y = mRadius * cosf(mPhi);
+	// Build the view matrix.
+	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	// XMMATRIX -> XMFLOAT4X4
+	// XMMATRIX in used
+	// XMFLOAT4X4 in class as member
+	XMStoreFloat4x4(&mView, view);
+
+	XMMATRIX world = XMLoadFloat4x4(&mWorld);
+	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX worldViewProj = world * view * proj;
+
+	// Update the constant buffer with the latest worldViewProj matrix.
+	ObjectConstants objConstants;
+	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	mObjectCB->CopyData(0, objConstants);
 }
 
 void BoxRenderer::Draw(const GameTimer& gt)
