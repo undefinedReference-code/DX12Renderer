@@ -34,6 +34,8 @@ private:
 	XMFLOAT4X4 mProj;
 
 	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
+
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mCbvHeap;
 };
 
 
@@ -101,6 +103,31 @@ bool BoxRenderer::Initialize()
 
 	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
 
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	// Address to start of the buffer (0th constant buffer).
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mObjectCB->Resource()->GetGPUVirtualAddress();
+	// Offset to the ith object constant buffer in the buffer.
+
+	// create cbv heap, we will not use SRV and UAV in this demo;
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+	md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
+
+	// The D3D12_CONSTANT_BUFFER_VIEW_DESC structure describes a subset of the constant
+	// buffer resource to bind to the HLSL constant buffer structure.As mentioned,
+	// typically a constant buffer stores an array of per - object constants for n objects, but
+	// we can get a view to the ith object constant data by using the BufferLocation and
+	// SizeInBytes.
+	// we only have one object in this demo, so give it zero
+	int boxCBufIndex = 0;
+	cbAddress += boxCBufIndex * objCBByteSize;
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+	cbvDesc.BufferLocation = cbAddress;
+	cbvDesc.SizeInBytes = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	md3dDevice->CreateConstantBufferView(&cbvDesc, mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }
