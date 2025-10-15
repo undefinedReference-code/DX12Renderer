@@ -65,4 +65,12 @@ public:
         Microsoft::WRL::ComPtr<ID3D12Resource>& uploadBuffer);
 
     static UINT CalcConstantBufferByteSize(UINT byteSize);
+
+    static Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(
+        const std::wstring& filename,
+        const D3D_SHADER_MACRO* defines,
+        const std::string& entrypoint,
+        const std::string& target);
+
+    static Microsoft::WRL::ComPtr<ID3DBlob> LoadBinary(const std::wstring& filename);
 };
