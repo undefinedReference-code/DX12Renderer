@@ -151,7 +151,11 @@ bool D3DApp::Initialize()
 	return true;
 }
 
-
+// Create a d3dDevices
+// Create a command queue
+// Create a command list
+// Create a swap chain
+// Create rtv dsv descriptor heap
 bool D3DApp::InitDirect3D()
 {
 #if defined(DEBUG) || defined(_DEBUG)

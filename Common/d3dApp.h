@@ -91,6 +91,8 @@ protected:
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
 	
+	// How to use during rendering?
+	// Bind rtv and dsv using commandList->OMSetRenderTargets;
 	static const int SwapChainBufferCount = 2;
 	int mCurrBackBuffer = 0;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];

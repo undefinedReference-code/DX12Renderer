@@ -27,6 +27,18 @@ public:
 			nullptr,
 			IID_PPV_ARGS(&mUploadBuffer)));
 
+		/*
+		 * Upon successful mapping:
+		 *   - `mMappedData` points to the starting address of CPU-accessible memory associated with the GPU upload heap.
+		 *   - The CPU can directly write data (e.g., vertices, constants) through this pointer without extra copying.
+		 *   - Writes are visible to the GPU (since the resource resides in a D3D12_HEAP_TYPE_UPLOAD heap).
+		 *
+		 * Important considerations:
+		 *   1. This mapping is persistent; no need to remap before each write operation.
+		 *   2. Ensure writes do not exceed buffer bounds and avoid writing while the GPU is reading (synchronization required).
+		 *   3. `mMappedData` remains valid until Unmap() is called.
+		 *   4. `reinterpret_cast<void**>` safely converts pointer types to match the Map() interface signature.
+		 */
 		ThrowIfFailed(mUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&mMappedData)));
 		// We do not need to unmap until we are done with the resource.
 		// However, we must not write to the resource while it is in use by

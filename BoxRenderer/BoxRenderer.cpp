@@ -9,6 +9,11 @@ struct ObjectConstants
 	DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 };
 
+struct Vertex {
+	XMFLOAT3 Pos;
+	XMFLOAT4 Color;
+};
+
 using namespace DirectX;
 class BoxRenderer : public D3DApp
 {
@@ -18,9 +23,17 @@ public:
 	virtual bool Initialize() override;
 private:
 	virtual void OnResize() override;
-	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
 	virtual void Update(const GameTimer& gt) override;
 	virtual void Draw(const GameTimer& gt) override;
+	virtual void OnMouseDown(WPARAM btnState, int x, int y) override;
+	virtual void OnMouseUp(WPARAM btnState, int x, int y) override;
+	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
+	void BuildDescriptorHeaps();
+	void BuildConstantBuffers();
+	void BuildRootSignature();
+	void BuildShadersAndInputLayout();
+	void BuildBoxGeometry();
+	void BuildPSO();
 
 private:
 	XMFLOAT2 mLastMousePos;
@@ -89,6 +102,43 @@ void BoxRenderer::OnMouseMove(WPARAM btnState, int x, int y)
 	mLastMousePos.y = y;
 }
 
+// CreateDescriptorHeap for CBV
+void BoxRenderer::BuildDescriptorHeaps()
+{
+	// create cbv heap, we will not use SRV and UAV in this demo;
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+	md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
+}
+
+// Create constant buffer and its view
+// We update cb every frame, so put it in upload heap
+void BoxRenderer::BuildConstantBuffers()
+{
+	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
+
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	// Address to start of the buffer (0th constant buffer).
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mObjectCB->Resource()->GetGPUVirtualAddress();
+
+	// The D3D12_CONSTANT_BUFFER_VIEW_DESC structure describes a subset of the constant
+	// buffer resource to bind to the HLSL constant buffer structure.As mentioned,
+	// typically a constant buffer stores an array of per - object constants for n objects, but
+	// we can get a view to the ith object constant data by using the BufferLocation and
+	// SizeInBytes.
+	// Offset to the ith object constant buffer in the buffer.
+	// We only have one object in this demo, so give it zero
+	int boxCBufIndex = 0;
+	cbAddress += boxCBufIndex * objCBByteSize;
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+	cbvDesc.BufferLocation = cbAddress;
+	cbvDesc.SizeInBytes = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	md3dDevice->CreateConstantBufferView(&cbvDesc, mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+}
+
 BoxRenderer::BoxRenderer(HINSTANCE hInstance)
 	: D3DApp(hInstance)
 {
@@ -101,33 +151,9 @@ bool BoxRenderer::Initialize()
 	if (!D3DApp::Initialize())
 		return false;
 
-	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
+	BuildDescriptorHeaps();
+	BuildConstantBuffers();
 
-	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	// Address to start of the buffer (0th constant buffer).
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mObjectCB->Resource()->GetGPUVirtualAddress();
-	// Offset to the ith object constant buffer in the buffer.
-
-	// create cbv heap, we will not use SRV and UAV in this demo;
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 1;
-	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	cbvHeapDesc.NodeMask = 0;
-	md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
-
-	// The D3D12_CONSTANT_BUFFER_VIEW_DESC structure describes a subset of the constant
-	// buffer resource to bind to the HLSL constant buffer structure.As mentioned,
-	// typically a constant buffer stores an array of per - object constants for n objects, but
-	// we can get a view to the ith object constant data by using the BufferLocation and
-	// SizeInBytes.
-	// we only have one object in this demo, so give it zero
-	int boxCBufIndex = 0;
-	cbAddress += boxCBufIndex * objCBByteSize;
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	md3dDevice->CreateConstantBufferView(&cbvDesc, mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }
