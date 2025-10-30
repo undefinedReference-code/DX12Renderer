@@ -48,8 +48,8 @@ private:
 
 
 	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
-	XMFLOAT4X4 mView = MathHelper::Identity4x4();;
-	XMFLOAT4X4 mProj = MathHelper::Identity4x4();;
+	XMFLOAT4X4 mView = MathHelper::Identity4x4();
+	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
 
@@ -307,6 +307,7 @@ void BoxRenderer::BuildPSO()
 	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = mBackBufferFormat;
 	psoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
@@ -351,6 +352,10 @@ bool BoxRenderer::Initialize()
 void BoxRenderer::OnResize()
 {
 	D3DApp::OnResize();
+
+	// The window resized, so update the aspect ratio and recompute the projection matrix.
+	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	XMStoreFloat4x4(&mProj, P);
 }
 void BoxRenderer::Update(const GameTimer& gt)
 {
