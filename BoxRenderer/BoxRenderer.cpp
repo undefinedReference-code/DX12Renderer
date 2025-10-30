@@ -3,10 +3,14 @@
 #include <DirectXColors.h>
 #include <DirectX-Headers/include/directx/d3dx12_barriers.h>
 #include "./Common/UploadBuffer.h"
+
+
+using namespace DirectX;
+
 // CBuffer
 struct ObjectConstants
 {
-	DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
+	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 };
 
 struct Vertex {
@@ -25,6 +29,7 @@ private:
 	virtual void OnResize() override;
 	virtual void Update(const GameTimer& gt) override;
 	virtual void Draw(const GameTimer& gt) override;
+
 	virtual void OnMouseDown(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseUp(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
@@ -42,9 +47,9 @@ private:
 	float mRadius = 5.0f;
 
 
-	XMFLOAT4X4 mWorld;
-	XMFLOAT4X4 mView;
-	XMFLOAT4X4 mProj;
+	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
+	XMFLOAT4X4 mView = MathHelper::Identity4x4();;
+	XMFLOAT4X4 mProj = MathHelper::Identity4x4();;
 
 	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
 
@@ -57,6 +62,8 @@ private:
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
 	std::unique_ptr<MeshGeometry> mBoxGeo = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> mPSO = nullptr;
 };
 
 
@@ -79,6 +86,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 		MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
 		return 0;
 	}
+}
+
+void BoxRenderer::OnMouseDown(WPARAM btnState, int x, int y)
+{
+	mLastMousePos.x = x;
+	mLastMousePos.y = y;
+
+	SetCapture(mhMainWnd);
+}
+
+void BoxRenderer::OnMouseUp(WPARAM btnState, int x, int y)
+{
+	ReleaseCapture();
 }
 
 void BoxRenderer::OnMouseMove(WPARAM btnState, int x, int y)
@@ -160,6 +180,7 @@ void BoxRenderer::BuildRootSignature()
 	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
 	// Create a single descriptor table of CBVs.
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
+	// You only declare that “there is a CBV at register b0” (or that a descriptor table contains a CBV); you do not describe how many float4s or what fields the CBV contains.
 	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
 		1, // Number of descriptors in table
 		0);// base shader register arguments are bound to for this root parameter
@@ -169,6 +190,7 @@ void BoxRenderer::BuildRootSignature()
 
 	// A root signature is an array of root parameters.
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
 	// create a root signature with a single slot which points to a
 	// descriptor range consisting of a single constant buffer.
 	Microsoft::WRL::ComPtr<ID3DBlob> serializedRootSig = nullptr;
@@ -268,7 +290,29 @@ void BoxRenderer::BuildBoxGeometry()
 
 void BoxRenderer::BuildPSO()
 {
-
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+	memset(&psoDesc, 0, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	psoDesc.InputLayout = { mInputLayout.data(), static_cast<unsigned>(mInputLayout.size()) };
+	psoDesc.pRootSignature = mRootSignature.Get();
+	psoDesc.VS = {
+		reinterpret_cast<BYTE*>(mvsByteCode->GetBufferPointer()),
+		mvsByteCode->GetBufferSize()
+	};
+	psoDesc.PS = {
+		reinterpret_cast<BYTE*>(mpsByteCode->GetBufferPointer()),
+		mpsByteCode->GetBufferSize()
+	};
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = mBackBufferFormat;
+	psoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+	psoDesc.SampleDesc.Quality = m4xMsaaQuality ? (m4xMsaaQuality - 1) : 0;
+	psoDesc.DSVFormat = mDepthStencilFormat;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
 }
 
 BoxRenderer::BoxRenderer(HINSTANCE hInstance)
@@ -283,12 +327,24 @@ bool BoxRenderer::Initialize()
 	if (!D3DApp::Initialize())
 		return false;
 
+	ThrowIfFailed(mDirectCmdListAlloc->Reset());
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
 	BuildDescriptorHeaps();
 	BuildConstantBuffers();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildBoxGeometry();
 	BuildPSO();
+
+	// Done recording commands.
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	// Wait until frame commands are complete. This waiting is
+	// inefficient and is done for simplicity. Later we will show how to
+	// organize our rendering code so we do not have to wait per frame.
+	FlushCommandQueue();
 
 	return true;
 }
@@ -311,7 +367,7 @@ void BoxRenderer::Update(const GameTimer& gt)
 	// XMMATRIX -> XMFLOAT4X4
 	// XMMATRIX in used
 	// XMFLOAT4X4 in class as member
-	XMStoreFloat4x4(&mView, view);
+	DirectX::XMStoreFloat4x4(&mView, view);
 
 	XMMATRIX world = XMLoadFloat4x4(&mWorld);
 	XMMATRIX proj = XMLoadFloat4x4(&mProj);
@@ -319,19 +375,24 @@ void BoxRenderer::Update(const GameTimer& gt)
 
 	// Update the constant buffer with the latest worldViewProj matrix.
 	ObjectConstants objConstants;
-	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	DirectX::XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	mObjectCB->CopyData(0, objConstants);
 }
 
 void BoxRenderer::Draw(const GameTimer& gt)
 {
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// !!!!!!!! mDirectCmdListAlloc->Reset() before mCommandList->Reset !!!!!!!!!
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// Reuse the memory associated with command recording.
 	// We can only reset when the associated command lists have finished
 	// execution on the GPU.
 	ThrowIfFailed(mDirectCmdListAlloc->Reset());
 	// A command list can be reset after it has been added to the
 	// command queue via ExecuteCommandList. Reusing the command list reuses memory.
-	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
+
+
 	// Indicate a state transition on the resource usage.
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -347,6 +408,26 @@ void BoxRenderer::Draw(const GameTimer& gt)
 	D3D12_CPU_DESCRIPTOR_HANDLE dsv = DepthStencilView();
 	D3D12_CPU_DESCRIPTOR_HANDLE rtv = CurrentBackBufferView();
 	mCommandList->OMSetRenderTargets(1, &rtv, true, &dsv);
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	// Bind vertex buffer(s) and index buffer.
+	// Note: IASetVertexBuffers binds attribute streams per-slot (one element per vertex index per slot).
+	//       You can place different attributes in different slots (non-interleaved streams).
+	//       You CANNOT place vertex 0..99 in slot0 and vertex 100..199 in slot1 and expect correct indexing.
+	//       The InputLayout's InputSlot field determines which slot each vertex attribute is read from.
+	mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
+	mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
+
+	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+
+	mCommandList->DrawIndexedInstanced(mBoxGeo->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+
 	// Indicate a state transition on the resource usage.
 	barrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 	mCommandList->ResourceBarrier(1, &barrier);

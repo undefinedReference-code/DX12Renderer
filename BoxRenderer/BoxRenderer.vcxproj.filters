@@ -43,4 +43,7 @@
       <Filter>Common</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="color.hlsl" />
+  </ItemGroup>
 </Project>

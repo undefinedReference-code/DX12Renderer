@@ -180,6 +180,17 @@ bool D3DApp::InitDirect3D()
 			D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&md3dDevice)));
 	}
 
+#if defined(_DEBUG)
+	{
+		Microsoft::WRL::ComPtr<ID3D12InfoQueue> info;
+		if (SUCCEEDED(md3dDevice->QueryInterface(IID_PPV_ARGS(&info))))
+		{
+			info->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+			info->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+		}
+	}
+#endif
+
 	// Create the Fence and Descriptor Sizes
 
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
