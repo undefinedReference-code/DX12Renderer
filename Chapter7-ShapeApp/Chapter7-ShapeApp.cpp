@@ -3,15 +3,8 @@
 #include <DirectXColors.h>
 #include <DirectX-Headers/include/directx/d3dx12_barriers.h>
 #include "./Common/UploadBuffer.h"
-
-
+#include "FrameResource.h"
 using namespace DirectX;
-
-// CBuffer
-struct ObjectConstants
-{
-	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
-};
 
 struct Vertex {
 	XMFLOAT3 Pos;
@@ -19,11 +12,11 @@ struct Vertex {
 };
 
 using namespace DirectX;
-class BoxRenderer : public D3DApp
+class ShapeRenderer : public D3DApp
 {
 public:
-	BoxRenderer(HINSTANCE hInstance);
-	~BoxRenderer();
+	ShapeRenderer(HINSTANCE hInstance);
+	~ShapeRenderer();
 	virtual bool Initialize() override;
 private:
 	virtual void OnResize() override;
@@ -39,6 +32,7 @@ private:
 	void BuildShadersAndInputLayout();
 	void BuildBoxGeometry();
 	void BuildPSO();
+	void BuildFrameResources();
 
 private:
 	XMFLOAT2 mLastMousePos;
@@ -46,10 +40,14 @@ private:
 	float mPhi = XM_PIDIV4;
 	float mRadius = 5.0f;
 
-
 	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
 	XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
+
+	static const int gNumFrameResources = 3;
+	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
+	FrameResource* mCurrFrameResource = nullptr;
+	int mCurrFrameResourceIndex = 0;
 
 	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
 
@@ -76,7 +74,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 #endif
 	try
 	{
-		BoxRenderer theApp(hInstance);
+		ShapeRenderer theApp(hInstance);
 		if (!theApp.Initialize())
 			return 0;
 		return theApp.Run();
@@ -88,7 +86,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 	}
 }
 
-void BoxRenderer::OnMouseDown(WPARAM btnState, int x, int y)
+void ShapeRenderer::OnMouseDown(WPARAM btnState, int x, int y)
 {
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
@@ -96,12 +94,12 @@ void BoxRenderer::OnMouseDown(WPARAM btnState, int x, int y)
 	SetCapture(mhMainWnd);
 }
 
-void BoxRenderer::OnMouseUp(WPARAM btnState, int x, int y)
+void ShapeRenderer::OnMouseUp(WPARAM btnState, int x, int y)
 {
 	ReleaseCapture();
 }
 
-void BoxRenderer::OnMouseMove(WPARAM btnState, int x, int y)
+void ShapeRenderer::OnMouseMove(WPARAM btnState, int x, int y)
 {
 	if ((btnState & MK_LBUTTON) != 0)
 	{
@@ -131,7 +129,7 @@ void BoxRenderer::OnMouseMove(WPARAM btnState, int x, int y)
 }
 
 // CreateDescriptorHeap for CBV
-void BoxRenderer::BuildDescriptorHeaps()
+void ShapeRenderer::BuildDescriptorHeaps()
 {
 	// create cbv heap, we will not use SRV and UAV in this demo;
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
@@ -142,9 +140,18 @@ void BoxRenderer::BuildDescriptorHeaps()
 	md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
 }
 
+void ShapeRenderer::BuildFrameResources()
+{
+	for (int i = 0; i < gNumFrameResources; ++i)
+	{
+		mFrameResources.push_back(std::make_unique<FrameResource>(
+			md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
+	}
+}
+
 // Create constant buffer and its view
 // We update cb every frame, so put it in upload heap
-void BoxRenderer::BuildConstantBuffers()
+void ShapeRenderer::BuildConstantBuffers()
 {
 	// UploadBuffer is a wrapper of ID3D12Resource that put in Upload buffer
 	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
@@ -168,7 +175,7 @@ void BoxRenderer::BuildConstantBuffers()
 	md3dDevice->CreateConstantBufferView(&cbvDesc, mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-void BoxRenderer::BuildRootSignature()
+void ShapeRenderer::BuildRootSignature()
 {
 	// Shader programs typically require resources as input (constant buffers,
 	// textures, samplers).  The root signature defines the resources the shader
@@ -205,7 +212,7 @@ void BoxRenderer::BuildRootSignature()
 		IID_PPV_ARGS(&mRootSignature)));
 }
 
-void BoxRenderer::BuildShadersAndInputLayout()
+void ShapeRenderer::BuildShadersAndInputLayout()
 {
 	// Compile Shader and prepare input layout
 	HRESULT hr = S_OK;
@@ -220,7 +227,7 @@ void BoxRenderer::BuildShadersAndInputLayout()
 	};
 }
 
-void BoxRenderer::BuildBoxGeometry()
+void ShapeRenderer::BuildBoxGeometry()
 {
 	std::array<Vertex, 8> vertices =
 	{
@@ -288,7 +295,7 @@ void BoxRenderer::BuildBoxGeometry()
 	mBoxGeo->DrawArgs["box"] = submesh;
 }
 
-void BoxRenderer::BuildPSO()
+void ShapeRenderer::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
 	memset(&psoDesc, 0, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
@@ -316,14 +323,14 @@ void BoxRenderer::BuildPSO()
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
 }
 
-BoxRenderer::BoxRenderer(HINSTANCE hInstance)
+ShapeRenderer::ShapeRenderer(HINSTANCE hInstance)
 	: D3DApp(hInstance)
 {
 }
-BoxRenderer::~BoxRenderer()
+ShapeRenderer::~ShapeRenderer()
 {
 }
-bool BoxRenderer::Initialize()
+bool ShapeRenderer::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return false;
@@ -349,7 +356,7 @@ bool BoxRenderer::Initialize()
 
 	return true;
 }
-void BoxRenderer::OnResize()
+void ShapeRenderer::OnResize()
 {
 	D3DApp::OnResize();
 
@@ -357,7 +364,7 @@ void BoxRenderer::OnResize()
 	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 	XMStoreFloat4x4(&mProj, P);
 }
-void BoxRenderer::Update(const GameTimer& gt)
+void ShapeRenderer::Update(const GameTimer& gt)
 {
 	// Convert Spherical to Cartesian coordinates.
 	float x = mRadius * sinf(mPhi) * cosf(mTheta);
@@ -384,7 +391,7 @@ void BoxRenderer::Update(const GameTimer& gt)
 	mObjectCB->CopyData(0, objConstants);
 }
 
-void BoxRenderer::Draw(const GameTimer& gt)
+void ShapeRenderer::Draw(const GameTimer& gt)
 {
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// !!!!!!!! mDirectCmdListAlloc->Reset() before mCommandList->Reset !!!!!!!!!
