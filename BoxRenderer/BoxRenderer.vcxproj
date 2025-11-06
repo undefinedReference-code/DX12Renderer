@@ -141,7 +141,7 @@
     <ClInclude Include="..\Common\UploadBuffer.h" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="color.hlsl">
+    <FxCompile Include="Shaders\color.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>

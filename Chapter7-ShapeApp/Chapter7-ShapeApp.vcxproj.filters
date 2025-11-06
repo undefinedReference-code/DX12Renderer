@@ -25,6 +25,9 @@
     <ClInclude Include="..\Common\UploadBuffer.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="FrameResource.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Chapter7-ShapeApp.cpp">
@@ -42,5 +45,16 @@
     <ClCompile Include="..\Common\MathHelper.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="FrameResource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderItem.h">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\color.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

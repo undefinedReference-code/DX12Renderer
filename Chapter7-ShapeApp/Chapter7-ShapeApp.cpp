@@ -4,7 +4,10 @@
 #include <DirectX-Headers/include/directx/d3dx12_barriers.h>
 #include "./Common/UploadBuffer.h"
 #include "FrameResource.h"
+#include "RenderItem.h"
 using namespace DirectX;
+
+const int gNumFrameResources = 3;
 
 struct Vertex {
 	XMFLOAT3 Pos;
@@ -44,10 +47,15 @@ private:
 	XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
-	static const int gNumFrameResources = 3;
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResource = nullptr;
 	int mCurrFrameResourceIndex = 0;
+
+	// List of all the render items.
+	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
+	// Render items divided by PSO.
+	std::vector<RenderItem*> mOpaqueRitems;
+	std::vector<RenderItem*> mTransparentRitems;
 
 	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
 
@@ -340,6 +348,7 @@ bool ShapeRenderer::Initialize()
 
 	BuildDescriptorHeaps();
 	BuildConstantBuffers();
+	BuildFrameResources();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildBoxGeometry();
@@ -366,6 +375,20 @@ void ShapeRenderer::OnResize()
 }
 void ShapeRenderer::Update(const GameTimer& gt)
 {
+	// Cycle through the circular frame resource array.
+	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
+	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
+	// Has the GPU finished processing the commands of the current frame
+	// resource. If not, wait until the GPU has completed commands up to
+	// this fence point.
+	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+
 	// Convert Spherical to Cartesian coordinates.
 	float x = mRadius * sinf(mPhi) * cosf(mTheta);
 	float z = mRadius * sinf(mPhi) * sinf(mTheta);
@@ -387,8 +410,8 @@ void ShapeRenderer::Update(const GameTimer& gt)
 
 	// Update the constant buffer with the latest worldViewProj matrix.
 	ObjectConstants objConstants;
-	DirectX::XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
-	mObjectCB->CopyData(0, objConstants);
+	DirectX::XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+	mCurrFrameResource->ObjectCB->CopyData(0, objConstants);
 }
 
 void ShapeRenderer::Draw(const GameTimer& gt)
@@ -451,8 +474,19 @@ void ShapeRenderer::Draw(const GameTimer& gt)
 	// swap the back and front buffers
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+	
+	// ********* old logic *************
 	// Wait until frame commands are complete. This waiting is
 	// inefficient and is done for simplicity. Later we will show how to
 	// organize our rendering code so we do not have to wait per frame.
-	FlushCommandQueue();
+	// FlushCommandQueue();
+	// ********* end old logic *************
+
+	// Advance the fence value to mark commands up to this fence point.
+	mCurrFrameResource->Fence = ++mCurrentFence;
+
+	// Add an instruction to the command queue to set a new fence point. 
+	// Because we are on the GPU timeline, the new fence point won't be 
+	// set until the GPU finishes processing all the commands prior to this Signal().
+	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
