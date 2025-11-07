@@ -37,11 +37,16 @@ private:
 	void BuildPSO();
 	void BuildFrameResources();
 
+	void UpdateObjectCBs(const GameTimer& gt);
+	void UpdateMainPassCB(const GameTimer& gt);
+
 private:
 	XMFLOAT2 mLastMousePos;
 	float mTheta = 1.5f * XM_PI;
 	float mPhi = XM_PIDIV4;
 	float mRadius = 5.0f;
+
+	XMFLOAT3 mEyePos;
 
 	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
 	XMFLOAT4X4 mView = MathHelper::Identity4x4();
@@ -156,6 +161,55 @@ void ShapeRenderer::BuildFrameResources()
 			md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
 	}
 }
+
+void ShapeRenderer::UpdateObjectCBs(const GameTimer& gt)
+{
+	auto currentObjectCB = mCurrFrameResource->ObjectCB.get();
+	for (auto& e : mAllRitems)
+	{
+		// Only update the cbuffer data if the constants have changed.
+		// This needs to be tracked per frame resource.
+		if (e->NumFramesDirty > 0)
+		{
+			XMMATRIX world = XMLoadFloat4x4(&e->World);
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+			currentObjectCB->CopyData(e->ObjCBIndex, objConstants);
+			// Next FrameResource need to be updated too.
+			e->NumFramesDirty--;
+		}
+	}
+}
+
+void ShapeRenderer::UpdateMainPassCB(const GameTimer& gt)
+{
+	auto autoCurrentPassCB = mCurrFrameResource->PassCB.get();
+	XMMATRIX view = XMLoadFloat4x4(&mView);
+	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+
+	PassConstants passConstants;
+	XMStoreFloat4x4(&passConstants.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&passConstants.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&passConstants.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&passConstants.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&passConstants.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&passConstants.InvViewProj, XMMatrixTranspose(invViewProj));
+
+	passConstants.EyePosW = mEyePos;
+	passConstants.RenderTargetSize = { (float)mClientWidth, (float)mClientHeight };
+	passConstants.InvRenderTargetSize = { 1.0f / (float)mClientWidth, 1.0f / (float)mClientHeight };
+	passConstants.NearZ = 1.0f;
+	passConstants.FarZ = 1000.0f;
+	passConstants.TotalTime = gt.TotalTime();
+	passConstants.DeltaTime = gt.DeltaTime();
+
+	autoCurrentPassCB->CopyData(0, passConstants);
+}
+
 
 // Create constant buffer and its view
 // We update cb every frame, so put it in upload heap
@@ -393,6 +447,9 @@ void ShapeRenderer::Update(const GameTimer& gt)
 	float x = mRadius * sinf(mPhi) * cosf(mTheta);
 	float z = mRadius * sinf(mPhi) * sinf(mTheta);
 	float y = mRadius * cosf(mPhi);
+
+	mEyePos = { x, y, z };
+
 	// Build the view matrix.
 	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
 	XMVECTOR target = XMVectorZero();
