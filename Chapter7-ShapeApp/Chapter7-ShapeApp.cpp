@@ -246,7 +246,7 @@ void ShapeRenderer::BuildRootSignature()
 	// thought of as defining the function signature.  
 	// 
 	// Root parameter can be a table, root descriptor or root constants.
-	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
+	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
 	// Create a single descriptor table of CBVs.
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
 	// You only declare that “there is a CBV at register b0” (or that a descriptor table contains a CBV); you do not describe how many float4s or what fields the CBV contains.
@@ -257,8 +257,14 @@ void ShapeRenderer::BuildRootSignature()
 		1, // Number of ranges
 		&cbvTable); // Pointer to array of ranges
 
+	CD3DX12_DESCRIPTOR_RANGE cbvTable1;
+	// this cbv binds to register 1(b1)
+	cbvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
+	slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable1);
+
 	// A root signature is an array of root parameters.
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	// Now you have 2 slotRootParameter
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	// create a root signature with a single slot which points to a
 	// descriptor range consisting of a single constant buffer.
