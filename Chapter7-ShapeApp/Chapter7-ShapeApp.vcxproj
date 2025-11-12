@@ -133,6 +133,7 @@
     <ClInclude Include="..\Common\MathHelper.h" />
     <ClInclude Include="..\Common\UploadBuffer.h" />
     <ClInclude Include="FrameResource.h" />
+    <ClInclude Include="GeometryGenerator.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Common\d3dApp.cpp" />
@@ -141,6 +142,7 @@
     <ClCompile Include="..\Common\MathHelper.cpp" />
     <ClCompile Include="Chapter7-ShapeApp.cpp" />
     <ClCompile Include="FrameResource.cpp" />
+    <ClCompile Include="GeometryGenerator.cpp" />
     <ClCompile Include="RenderItem.h" />
   </ItemGroup>
   <ItemGroup>

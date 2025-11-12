@@ -28,6 +28,9 @@
     <ClInclude Include="FrameResource.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="GeometryGenerator.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Chapter7-ShapeApp.cpp">
@@ -50,6 +53,9 @@
     </ClCompile>
     <ClCompile Include="RenderItem.h">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GeometryGenerator.cpp">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
