@@ -173,7 +173,7 @@ void ShapeRenderer::BuildConstantBufferViews()
 {
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 
-	UINT objCount = (UINT)mAllRitems.size();
+	UINT objCount = (UINT)mOpaqueRitems.size();
 	for (int frameIdx = 0; frameIdx < gNumFrameResources; frameIdx++) {
 		FrameResource* cur = mFrameResources[frameIdx].get();
 		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = cur->ObjectCB->Resource()->GetGPUVirtualAddress();
@@ -315,11 +315,13 @@ void ShapeRenderer::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const st
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 
 		cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
+		
+		UINT objCount = (UINT)mOpaqueRitems.size();
 		CD3DX12_GPU_DESCRIPTOR_HANDLE objectCbVhandle(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		objectCbVhandle.Offset(ri->ObjCBIndex + objCount * mCurrFrameResourceIndex, mCbvSrvUavDescriptorSize);
 		cmdList->SetGraphicsRootDescriptorTable(0, objectCbVhandle);
 
-		cmdList->DrawIndexedInstanced(mShapeGeo->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 }
 
@@ -481,7 +483,7 @@ void ShapeRenderer::BuildRootSignature()
 	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
 	// Create a single descriptor table of CBVs.
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
-	// You only declare that “there is a CBV at register b0” (or that a descriptor table contains a CBV); you do not describe how many float4s or what fields the CBV contains.
+	// You only declare that “there is a CBV at register b0?(or that a descriptor table contains a CBV); you do not describe how many float4s or what fields the CBV contains.
 	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
 		1, // Number of descriptors in table
 		0);// base shader register arguments are bound to for this root parameter
@@ -569,14 +571,20 @@ bool ShapeRenderer::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return false;
+
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+	// BuildRenderItems -> BuildFrameResources
+	// BuildShapeGeometry -> BuildRenderItems
+	BuildShapeGeometry();
+	BuildRenderItems();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildConstantBufferViews();
 	
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
-	BuildShapeGeometry();
 	BuildPSO();
+
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -639,6 +647,9 @@ void ShapeRenderer::Update(const GameTimer& gt)
 	ObjectConstants objConstants;
 	DirectX::XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 	mCurrFrameResource->ObjectCB->CopyData(0, objConstants);
+
+	UpdateMainPassCB(gt);
+	UpdateObjectCBs(gt);
 }
 
 void ShapeRenderer::Draw(const GameTimer& gt)
