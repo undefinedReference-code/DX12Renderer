@@ -32,12 +32,12 @@ private:
 	virtual void OnMouseUp(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
 	void BuildDescriptorHeaps();
-	void BuildConstantBuffers();
+	void BuildConstantBufferViews();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
-	void BuildBoxGeometry();
 	void BuildPSO();
 	void BuildFrameResources();
+	void BuildRenderItems();
 
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
@@ -64,9 +64,12 @@ private:
 	std::vector<RenderItem*> mOpaqueRitems;
 	std::vector<RenderItem*> mTransparentRitems;
 
-	std::shared_ptr<UploadBuffer<ObjectConstants>> mObjectCB;
-
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mCbvHeap;
+	/*
+	| frameRes 0, object 0 | ... | frameRes gNumFrameResources - 1, object objectCount -1 | frameRes 0 passData | frameRes 1 pass Data | .... |
+	*/
+	UINT mPassCbvOffset;
+
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRootSignature;
 
 	Microsoft::WRL::ComPtr<ID3DBlob> mvsByteCode = nullptr;
@@ -147,13 +150,64 @@ void ShapeRenderer::OnMouseMove(WPARAM btnState, int x, int y)
 // CreateDescriptorHeap for CBV
 void ShapeRenderer::BuildDescriptorHeaps()
 {
+	UINT objCount = (UINT)mOpaqueRitems.size();
+	// Need a CBV descriptor for each object for each frame resource,
+	// +1 for the perPass CBV for each frame resource.
+	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
 	// create cbv heap, we will not use SRV and UAV in this demo;
+
+	// Save an offset to the start of the pass CBVs. These are the last 3 descriptors.
+	mPassCbvOffset = objCount * gNumFrameResources;
+
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.NumDescriptors = numDescriptors;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
+}
+
+void ShapeRenderer::BuildConstantBufferViews()
+{
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
+	UINT objCount = (UINT)mAllRitems.size();
+	for (int frameIdx = 0; frameIdx < gNumFrameResources; frameIdx++) {
+		FrameResource* cur = mFrameResources[frameIdx].get();
+		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = cur->ObjectCB->Resource()->GetGPUVirtualAddress();
+		for (int i = 0; i < objCount; i++) {
+			D3D12_GPU_VIRTUAL_ADDRESS trueAddress = cbAddress + objCBByteSize * i;
+			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+			cbvDesc.BufferLocation = trueAddress;
+			cbvDesc.SizeInBytes = objCBByteSize;
+
+			// Offset to the object CBV in the descriptor heap.
+			// Each FrameResource has it own ObjectCB, but they share one mCbvHeap
+			int heapIndex = frameIdx * objCount + i;
+			auto cbvHanle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+			cbvHanle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
+
+			md3dDevice->CreateConstantBufferView(&cbvDesc, cbvHanle);
+		}
+	}
+
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	for (int frameIdx = 0; frameIdx < gNumFrameResources; frameIdx++) {
+		
+		FrameResource* cur = mFrameResources[frameIdx].get();
+		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = cur->PassCB->Resource()->GetGPUVirtualAddress();
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+		cbvDesc.BufferLocation = cbAddress;
+		cbvDesc.SizeInBytes = passCBByteSize;
+
+		int heapIdx = mPassCbvOffset + frameIdx;
+		auto cbvHanle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		cbvHanle.Offset(heapIdx, mCbvSrvUavDescriptorSize);
+
+		md3dDevice->CreateConstantBufferView(&cbvDesc, cbvHanle);
+
+	}
 }
 
 void ShapeRenderer::BuildFrameResources()
@@ -163,6 +217,86 @@ void ShapeRenderer::BuildFrameResources()
 		mFrameResources.push_back(std::make_unique<FrameResource>(
 			md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
 	}
+}
+
+void ShapeRenderer::BuildRenderItems()
+{
+	auto boxRitem = std::make_unique<RenderItem>();
+	XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	boxRitem->ObjCBIndex = 0;
+	boxRitem->Geo = mGeometries["shapeGeo"].get();
+	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
+	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
+	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
+	mAllRitems.push_back(std::move(boxRitem));
+
+	auto gridRitem = std::make_unique<RenderItem>();
+	gridRitem->World = MathHelper::Identity4x4();
+	gridRitem->ObjCBIndex = 1;
+	gridRitem->Geo = mGeometries["shapeGeo"].get();
+	gridRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	gridRitem->IndexCount = gridRitem->Geo->DrawArgs["grid"].IndexCount;
+	gridRitem->StartIndexLocation = gridRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	gridRitem->BaseVertexLocation = gridRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	mAllRitems.push_back(std::move(gridRitem));
+
+	UINT objCBIndex = 2;
+	for (int i = 0; i < 5; ++i)
+	{
+		auto leftCylRitem = std::make_unique<RenderItem>();
+		auto rightCylRitem = std::make_unique<RenderItem>();
+		auto leftSphereRitem = std::make_unique<RenderItem>();
+		auto rightSphereRitem = std::make_unique<RenderItem>();
+
+		XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
+		XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
+
+		XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
+		XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
+
+		XMStoreFloat4x4(&leftCylRitem->World, rightCylWorld);
+		leftCylRitem->ObjCBIndex = objCBIndex++;
+		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
+		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+		leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&rightCylRitem->World, leftCylWorld);
+		rightCylRitem->ObjCBIndex = objCBIndex++;
+		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
+		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+		rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
+		leftSphereRitem->ObjCBIndex = objCBIndex++;
+		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
+		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+		leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
+		rightSphereRitem->ObjCBIndex = objCBIndex++;
+		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
+		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+
+		mAllRitems.push_back(std::move(leftCylRitem));
+		mAllRitems.push_back(std::move(rightCylRitem));
+		mAllRitems.push_back(std::move(leftSphereRitem));
+		mAllRitems.push_back(std::move(rightSphereRitem));
+	}
+
+	// All the render items are opaque.
+	for (auto& e : mAllRitems)
+		mOpaqueRitems.push_back(e.get());
+
 }
 
 void ShapeRenderer::UpdateObjectCBs(const GameTimer& gt)
@@ -309,31 +443,7 @@ void ShapeRenderer::BuildShapeGeometry()
 }
 
 
-// Create constant buffer and its view
-// We update cb every frame, so put it in upload heap
-void ShapeRenderer::BuildConstantBuffers()
-{
-	// UploadBuffer is a wrapper of ID3D12Resource that put in Upload buffer
-	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
 
-	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	// Address to start of the buffer (0th constant buffer).
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mObjectCB->Resource()->GetGPUVirtualAddress();
-
-	// The D3D12_CONSTANT_BUFFER_VIEW_DESC structure describes a subset of the constant
-	// buffer resource to bind to the HLSL constant buffer structure.As mentioned,
-	// typically a constant buffer stores an array of per - object constants for n objects, but
-	// we can get a view to the ith object constant data by using the BufferLocation and
-	// SizeInBytes.
-	// Offset to the ith object constant buffer in the buffer.
-	// We only have one object in this demo, so give it zero
-	int boxCBufIndex = 0;
-	cbAddress += boxCBufIndex * objCBByteSize;
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	md3dDevice->CreateConstantBufferView(&cbvDesc, mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-}
 
 void ShapeRenderer::BuildRootSignature()
 {
@@ -418,7 +528,10 @@ void ShapeRenderer::BuildPSO()
 	psoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	psoDesc.SampleDesc.Quality = m4xMsaaQuality ? (m4xMsaaQuality - 1) : 0;
 	psoDesc.DSVFormat = mDepthStencilFormat;
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
+
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
+	mPSOs["opaque"] = pso;
 }
 
 ShapeRenderer::ShapeRenderer(HINSTANCE hInstance)
@@ -437,7 +550,7 @@ bool ShapeRenderer::Initialize()
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
 	BuildDescriptorHeaps();
-	BuildConstantBuffers();
+	BuildConstantBufferViews();
 	BuildFrameResources();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
@@ -509,16 +622,17 @@ void ShapeRenderer::Update(const GameTimer& gt)
 
 void ShapeRenderer::Draw(const GameTimer& gt)
 {
+	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// !!!!!!!! mDirectCmdListAlloc->Reset() before mCommandList->Reset !!!!!!!!!
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// Reuse the memory associated with command recording.
 	// We can only reset when the associated command lists have finished
 	// execution on the GPU.
-	ThrowIfFailed(mDirectCmdListAlloc->Reset());
+	ThrowIfFailed(cmdListAlloc->Reset());
 	// A command list can be reset after it has been added to the
 	// command queue via ExecuteCommandList. Reusing the command list reuses memory.
-	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
+	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 
 
 	// Indicate a state transition on the resource usage.

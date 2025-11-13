@@ -88,7 +88,6 @@ protected:
 	UINT64 mCurrentFence = 0;
 	
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
 	
 	// How to use during rendering?
@@ -106,6 +105,7 @@ protected:
 	
 	UINT mRtvDescriptorSize = 0;
 	UINT mDsvDescriptorSize = 0;
+	UINT mCbvSrvUavDescriptorSize = 0;
 	
 	// Derived class should set these in derived constructor to customize
 	// starting values.
