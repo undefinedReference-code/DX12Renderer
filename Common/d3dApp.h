@@ -106,7 +106,6 @@ protected:
 	
 	UINT mRtvDescriptorSize = 0;
 	UINT mDsvDescriptorSize = 0;
-	UINT mCbvSrvDescriptorSize = 0;
 	
 	// Derived class should set these in derived constructor to customize
 	// starting values.
