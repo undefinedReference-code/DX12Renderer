@@ -38,6 +38,8 @@ private:
 	void BuildPSO();
 	void BuildFrameResources();
 	void BuildRenderItems();
+	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
+	
 
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
@@ -299,6 +301,28 @@ void ShapeRenderer::BuildRenderItems()
 
 }
 
+void ShapeRenderer::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
+{
+	for (int i = 0; i < ritems.size(); i++) 
+	{
+		auto& ri = ritems[i];
+		// Bind vertex buffer(s) and index buffer.
+		// Note: IASetVertexBuffers binds attribute streams per-slot (one element per vertex index per slot).
+		//       You can place different attributes in different slots (non-interleaved streams).
+		//       You CANNOT place vertex 0..99 in slot0 and vertex 100..199 in slot1 and expect correct indexing.
+		//       The InputLayout's InputSlot field determines which slot each vertex attribute is read from.
+		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+
+		cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		CD3DX12_GPU_DESCRIPTOR_HANDLE objectCbVhandle(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		cmdList->SetGraphicsRootDescriptorTable(0, objectCbVhandle);
+
+		cmdList->DrawIndexedInstanced(mShapeGeo->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+	}
+}
+
 void ShapeRenderer::UpdateObjectCBs(const GameTimer& gt)
 {
 	auto currentObjectCB = mCurrFrameResource->ObjectCB.get();
@@ -545,13 +569,10 @@ bool ShapeRenderer::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return false;
-
-	ThrowIfFailed(mDirectCmdListAlloc->Reset());
-	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
-
+	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildConstantBufferViews();
-	BuildFrameResources();
+	
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildShapeGeometry();
@@ -656,19 +677,11 @@ void ShapeRenderer::Draw(const GameTimer& gt)
 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	// Bind vertex buffer(s) and index buffer.
-	// Note: IASetVertexBuffers binds attribute streams per-slot (one element per vertex index per slot).
-	//       You can place different attributes in different slots (non-interleaved streams).
-	//       You CANNOT place vertex 0..99 in slot0 and vertex 100..199 in slot1 and expect correct indexing.
-	//       The InputLayout's InputSlot field determines which slot each vertex attribute is read from.
-	mCommandList->IASetVertexBuffers(0, 1, &mShapeGeo->VertexBufferView());
-	mCommandList->IASetIndexBuffer(&mShapeGeo->IndexBufferView());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE passCBVhanlde (mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+	passCBVhanlde.Offset(mPassCbvOffset + mCurrFrameResourceIndex, mCbvSrvUavDescriptorSize);
+	mCommandList->SetGraphicsRootDescriptorTable(1, passCBVhanlde);
 
-	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-
-	mCommandList->DrawIndexedInstanced(mShapeGeo->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
 
 	// Indicate a state transition on the resource usage.
 	barrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
